@@ -1,0 +1,76 @@
+//first fit
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/slab.h>
+#include <linux/ktime.h>
+
+MODULE_LICENSE("GPL");
+
+#define MEMORY_SIZE 1000
+
+struct MemoryBlock {
+    int size;
+    int allocated; // 1 for allocated, 0 for free
+};
+
+static struct MemoryBlock memory_pool[MEMORY_SIZE];
+
+static void* kernel_first_fit(int size) {
+    for (int i = 0; i < MEMORY_SIZE; ++i) {
+        if (!memory_pool[i].allocated && memory_pool[i].size >= size) {
+            // Allocate memory from this block, demonstrating internal fragmentation
+            int internal_fragmentation = memory_pool[i].size - size - 10; // 10 bytes internal fragmentation
+            int remaining_size = memory_pool[i].size - size - internal_fragmentation;
+            memory_pool[i].size = size + internal_fragmentation;
+            memory_pool[i].allocated = 1;
+
+            // Split the block if there's remaining space
+            if (remaining_size > 0) {
+                memory_pool[i + 1].size = remaining_size;
+                memory_pool[i + 1].allocated = 0;
+            }
+
+            printk(KERN_INFO "Internal Fragmentation: %d bytes\n", internal_fragmentation);
+            return &(memory_pool[i]);
+        }
+    }
+
+    // No suitable block found for allocation
+    return NULL;
+}
+
+static int __init memory_allocation_init(void) {
+    ktime_t start_time, end_time;
+    s64 elapsed_time;
+
+    // Initialize memory pool or other necessary data structures
+    // Example initialization: setting all blocks to free and varying sizes for demonstration
+    for (int i = 0; i < MEMORY_SIZE; ++i) {
+        memory_pool[i].size = 100 + (i % 50); // Varying block sizes for demonstration
+        memory_pool[i].allocated = 0;
+    }
+
+    // Measure the execution time of kernel_first_fit() function
+    start_time = ktime_get();
+    void* allocated_block = kernel_first_fit(50); // Allocate a block of size 50 with internal fragmentation
+    end_time = ktime_get();
+
+    if (allocated_block) {
+        printk(KERN_INFO "First Fit: Allocated block at memory address %p\n", allocated_block);
+    } else {
+        printk(KERN_INFO "First Fit: Failed to allocate memory\n");
+    }
+
+    // Calculate and print the execution time
+    elapsed_time = ktime_to_ns(ktime_sub(end_time, start_time));
+    printk(KERN_INFO "Execution time: %lld ns\n", elapsed_time);
+
+    return 0;
+}
+
+static void __exit memory_allocation_exit(void) {
+    printk(KERN_INFO "First Fit Memory Allocation Module Unloaded\n");
+}
+
+module_init(memory_allocation_init);
+module_exit(memory_allocation_exit);

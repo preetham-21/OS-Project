@@ -1,0 +1,106 @@
+//next fit
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/slab.h>
+#include <linux/ktime.h>
+
+MODULE_LICENSE("GPL");
+
+struct MemoryBlock {
+    int size;
+    int allocated; // 1 for allocated, 0 for free
+};
+
+#define MEMORY_SIZE 1000
+
+static struct MemoryBlock memory_pool[MEMORY_SIZE];
+static int next_fit_index = 0;
+
+static void* kernel_next_fit(int size) {
+    int internal_fragmentation = 0;
+
+    for (int i = next_fit_index; i < MEMORY_SIZE; ++i) {
+        if (!memory_pool[i].allocated && memory_pool[i].size >= size) {
+            int remaining_size = memory_pool[i].size - size - 10; // 10 bytes internal fragmentation
+            internal_fragmentation = remaining_size;
+            int remaining_after_fragmentation = remaining_size - internal_fragmentation;
+            memory_pool[i].size = size + internal_fragmentation;
+            memory_pool[i].allocated = 1;
+
+            // Split the block if there's remaining space after fragmentation
+            if (remaining_after_fragmentation > 0) {
+                memory_pool[i + 1].size = remaining_after_fragmentation;
+                memory_pool[i + 1].allocated = 0;
+            }
+
+            // Update the next fit index for the next allocation
+            next_fit_index = i + 1;
+
+            printk(KERN_INFO "Next Fit: Allocated block at memory address %p\n", &(memory_pool[i]));
+            printk(KERN_INFO "Internal Fragmentation: %d bytes\n", internal_fragmentation);
+            return &(memory_pool[i]);
+        }
+    }
+
+    // If no suitable block is found from next_fit_index to the end, search from the beginning
+    for (int i = 0; i < next_fit_index; ++i) {
+        if (!memory_pool[i].allocated && memory_pool[i].size >= size) {
+            int remaining_size = memory_pool[i].size - size - 10; // 10 bytes internal fragmentation
+            internal_fragmentation = remaining_size;
+            int remaining_after_fragmentation = remaining_size - internal_fragmentation;
+            memory_pool[i].size = size + internal_fragmentation;
+            memory_pool[i].allocated = 1;
+
+            // Split the block if there's remaining space after fragmentation
+            if (remaining_after_fragmentation > 0) {
+                memory_pool[i + 1].size = remaining_after_fragmentation;
+                memory_pool[i + 1].allocated = 0;
+            }
+
+            // Update the next fit index for the next allocation
+            next_fit_index = i + 1;
+
+            printk(KERN_INFO "Internal Fragmentation: %d bytes\n", internal_fragmentation);
+            return &(memory_pool[i]);
+        }
+    }
+
+    // No suitable block found for allocation
+    return NULL;
+}
+
+static int __init memory_allocation_init(void) {
+    ktime_t start_time, end_time;
+    s64 elapsed_time;
+
+    // Initialize memory pool or other necessary data structures
+    // Example initialization: setting all blocks to free and varying sizes for demonstration
+    for (int i = 0; i < MEMORY_SIZE; ++i) {
+        memory_pool[i].size = 100 + (i % 50); // Varying block sizes for demonstration
+        memory_pool[i].allocated = 0;
+    }
+
+    // Measure the execution time of kernel_next_fit() function
+    start_time = ktime_get();
+    void* allocated_block = kernel_next_fit(50); // Allocate a block of size 50 with internal fragmentation
+    end_time = ktime_get();
+
+    if (allocated_block) {
+        printk(KERN_INFO "Next Fit: Allocated block at memory address %p\n", allocated_block);
+    } else {
+        printk(KERN_INFO "Next Fit: Failed to allocate memory\n");
+    }
+
+    // Calculate and print the execution time
+    elapsed_time = ktime_to_ns(ktime_sub(end_time, start_time));
+    printk(KERN_INFO "Execution time: %lld ns\n", elapsed_time);
+
+    return 0;
+}
+
+static void __exit memory_allocation_exit(void) {
+    printk(KERN_INFO "Next Fit Memory Allocation Module Unloaded\n");
+}
+
+module_init(memory_allocation_init);
+module_exit(memory_allocation_exit);
